@@ -4,7 +4,8 @@ import random
 import logging
 import asyncio
 from datetime import datetime, time as dt_time, timedelta
-from aiogram import Bot, Dispatcher, types, executor
+from aiogram import Bot, Dispatcher, types
+from aiogram.utils import executor
 
 # Настройка логов
 logging.basicConfig(level=logging.INFO)
@@ -51,7 +52,10 @@ async def send_card(user_id: int):
         logger.error(f"Ошибка отправки карты пользователю {user_id}: {e}")
         return False
 
-async def scheduled_task():
+async def on_startup(dp):
+    asyncio.create_task(scheduler())
+
+async def scheduler():
     while True:
         try:
             now = datetime.now() + timedelta(hours=3)  # MSK (UTC+3)
@@ -63,7 +67,7 @@ async def scheduled_task():
                             data['count'] = 1
             await asyncio.sleep(300)  # Проверка каждые 5 минут
         except Exception as e:
-            logger.error(f"Ошибка в scheduled_task: {e}")
+            logger.error(f"Ошибка в scheduler: {e}")
             await asyncio.sleep(60)
 
 @dp.message_handler(commands=['start'])
@@ -97,8 +101,6 @@ async def cmd_start(message: types.Message):
 if __name__ == '__main__':
     try:
         logger.info("Запуск бота...")
-        loop = asyncio.get_event_loop()
-        loop.create_task(scheduled_task())
-        executor.start_polling(dp, skip_updates=True)
+        executor.start_polling(dp, skip_updates=True, on_startup=on_startup)
     except Exception as e:
         logger.error(f"Фатальная ошибка при запуске: {e}")
