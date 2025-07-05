@@ -2,16 +2,12 @@ import os
 import json
 import random
 import time
-from datetime import datetime, time as dt_time
-import pytz
+from datetime import datetime, time as dt_time, timedelta
 from aiogram import Bot, Dispatcher, types
 from aiogram.utils import executor
 
-# Загрузка конфигурации
-API_TOKEN = os.getenv('TELEGRAM_TOKEN')  # Или укажите токен напрямую
-if not API_TOKEN:
-    raise ValueError("7974503657:AAGjUHrE4VWYIeiJ1YILovklhttFT4W5-vw")
-
+# Настройки бота
+API_TOKEN = '7974503657:AAGjUHrE4VWYIeiJ1YILovklhttFT4W5-vw'
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
@@ -45,11 +41,13 @@ async def send_card(user_id):
 
 async def scheduled_card():
     while True:
-        moscow_tz = pytz.timezone('Europe/Moscow')
-        now = datetime.now(moscow_tz)
-        if now.time() >= dt_time(10, 0) and now.time() <= dt_time(10, 5):
+        now = datetime.now()
+        # Московское время (UTC+3)
+        moscow_time = now + timedelta(hours=3)
+        if moscow_time.time() >= dt_time(10, 0) and moscow_time.time() <= dt_time(10, 5):
             for user_id in list(user_last_request.keys()):
-                if (now - user_last_request[user_id]).days >= 1:
+                last_request = user_last_request[user_id]
+                if (now - last_request).total_seconds() >= 86400:  # 24 часа
                     await send_card(user_id)
                     user_last_request[user_id] = now
                     user_request_count[user_id] = 1
@@ -58,7 +56,7 @@ async def scheduled_card():
 @dp.message_handler(commands=['start'])
 async def handle_start(message: types.Message):
     user_id = message.from_user.id
-    now = datetime.now(pytz.timezone('Europe/Moscow'))
+    now = datetime.now()
     
     # Инициализация счетчика
     if user_id not in user_request_count:
@@ -66,8 +64,8 @@ async def handle_start(message: types.Message):
     
     # Проверка времени последнего запроса
     if user_id in user_last_request:
-        hours_passed = (now - user_last_request[user_id]).total_seconds() / 3600
-        if hours_passed < 24:
+        seconds_passed = (now - user_last_request[user_id]).total_seconds()
+        if seconds_passed < 86400:  # 24 часа
             user_request_count[user_id] += 1
         else:
             user_request_count[user_id] = 1
