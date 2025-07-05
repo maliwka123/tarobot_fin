@@ -94,7 +94,7 @@ async def cmd_start(message: types.Message):
     else:
         await message.reply(
             "Сегодня Таро дали все подсказки которые могли. "
-            "Если вам интересно погрузиться в мир Таро, приходите в @Taro_Caezar",
+            "Если вам интересно погрузиться в мир Таро, приходите в @Taro_Caesar",
             parse_mode="HTML"
         )
 
