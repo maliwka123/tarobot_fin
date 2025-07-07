@@ -12,7 +12,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Конфигурация бота
-API_TOKEN = '348274440:AAGtY3EC0NuA4Y8S5RP-oJLr2fWsG-QGhmM'
+API_TOKEN = '7348274440:AAGtY3EC0NuA4Y8S5RP-oJLr2fWsG-QGhmM'
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
