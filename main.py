@@ -161,69 +161,6 @@ async def cmd_start(message: types.Message):
 async def on_startup(dp):
     asyncio.create_task(scheduled_morning_card())
 
-# --- Статистика (/peop) ---
-import json
-from datetime import datetime, timedelta
-
-# Файл для хранения данных
-STATS_FILE = 'user_stats.json'
-
-# Загрузка данных
-try:
-    with open(STATS_FILE, 'r') as f:
-        user_stats = json.load(f)
-except:
-    user_stats = {
-        "all_users": {},  # {user_id: "первая_дата"}
-        "last_active": {} # {user_id: "последняя_дата"}
-    }
-
-# Обновление статистики при /start (без изменений основной логики)
-@dp.message_handler(commands=['start'])
-async def cmd_start(message: types.Message):
-    user_id = str(message.from_user.id)
-    today = datetime.now().strftime("%Y-%m-%d")
-    
-    # Фиксируем активность (если нужно для статистики)
-    user_stats["all_users"][user_id] = user_stats.get("all_users", {}).get(user_id, today)
-    user_stats["last_active"][user_id] = today
-    
-    # Сохраняем данные
-    with open(STATS_FILE, 'w') as f:
-        json.dump(user_stats, f, indent=2)
-    
-    # Ваш СТАРЫЙ код отправки карт (не меняем!)
-    # ... 
-
-# Новая команда /peop (только для вашего user_id)
-@dp.message_handler(commands=['peop'])
-async def cmd_peop(message: types.Message):
-    # Проверка вашего user_id (227001984)
-    if message.from_user.id != 227001984:
-        await message.answer("⛔ Команда только для администратора")
-        return
-    
-    now = datetime.now()
-    week_ago = (now - timedelta(days=7)).strftime("%Y-%m-%d")
-    
-    # Считаем активных за неделю
-    active_users = [
-        user_id for user_id, date in user_stats["last_active"].items()
-        if date >= week_ago
-    ]
-    
-    await message.answer(
-        f"📊 <b>Статистика бота</b>\n\n"
-        f"• Всего пользователей: <code>{len(user_stats['all_users'])}</code>\n"
-        f"• Активных за неделю: <code>{len(active_users)}</code>\n\n"
-        f"<i>Данные на: {now.strftime('%d.%m.%Y %H:%M')}</i>",
-        parse_mode="HTML"
-    )
-
-# Автосохранение при выходе
-import atexit
-atexit.register(lambda: json.dump(user_stats, open(STATS_FILE, 'w'), indent=2))
-
 if __name__ == '__main__':
     try:
         logger.info("Запуск бота...")
