@@ -161,29 +161,64 @@ async def cmd_start(message: types.Message):
 async def on_startup(dp):
     asyncio.create_task(scheduled_morning_card())
 
-# --- Скрытая статистика ---
-active_users = {}  # Словарь для хранения активности {user_id: дата}
+# --- Статистика пользователей ---
+import json
+from datetime import datetime, timedelta
 
-@dp.message_handler(commands=['stat'])
-async def cmd_stat(message: types.Message):
-    if message.from_user.id != 227001984:
+# Загрузка данных из файла
+try:
+    with open('user_stats.json', 'r') as f:
+        user_stats = json.load(f)
+except:
+    user_stats = {
+        "all_users": {},  # {user_id: "первая_дата"}
+        "last_active": {} # {user_id: "последняя_дата"}
+    }
+
+# Обновление данных при /start
+@dp.message_handler(commands=['start'])
+async def cmd_start(message: types.Message):
+    user_id = str(message.from_user.id)
+    today = datetime.now().strftime("%Y-%m-%d")
+    
+    # Добавляем в общую статистику
+    if user_id not in user_stats["all_users"]:
+        user_stats["all_users"][user_id] = today
+    
+    # Обновляем последнюю активность
+    user_stats["last_active"][user_id] = today
+    
+    # Сохраняем данные
+    with open('user_stats.json', 'w') as f:
+        json.dump(user_stats, f)
+    
+    # Ваш основной код отправки карт...
+
+# Команда /stats (только для админа)
+@dp.message_handler(commands=['stats'])
+async def cmd_stats(message: types.Message):
+    if message.from_user.id != 227001984:  
         return
     
-    now = datetime.now().date()
-    active_count = sum((now - date).days <= 3 for date in active_users.values())
+    now = datetime.now()
+    week_ago = (now - timedelta(days=7)).strftime("%Y-%m-%d")
+    
+    # Считаем активных за неделю
+    active_users = [
+        user_id for user_id, last_date in user_stats["last_active"].items()
+        if last_date >= week_ago
+    ]
     
     await message.answer(
-        f"📊 Активных пользователей (3 дня): {active_count}\n"
-        f"📌 Всего уникальных: {len(active_users)}",
+        f"📊 <b>Статистика бота:</b>\n\n"
+        f"• Всего пользователей: <code>{len(user_stats['all_users'])}</code>\n"
+        f"• Активных за неделю: <code>{len(active_users)}</code>",
         parse_mode="HTML"
     )
 
-# Обновляем активность в /start
-@dp.message_handler(commands=['start'])
-async def cmd_start(message: types.Message):
-    user_id = message.from_user.id
-    active_users[user_id] = datetime.now().date()  # Записываем активность
-    # ... (остальной ваш код /start)
+# Автосохранение при выходе
+import atexit
+atexit.register(lambda: json.dump(user_stats, open('user_stats.json', 'w')))
 
 if __name__ == '__main__':
     try:
