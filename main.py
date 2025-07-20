@@ -6,6 +6,7 @@ import asyncio
 from datetime import datetime, time as dt_time, timedelta
 from aiogram import Bot, Dispatcher, types
 from aiogram.utils import executor
+from pathlib import Path
 
 # Настройка логов
 logging.basicConfig(level=logging.INFO)
@@ -24,6 +25,29 @@ logger.info(f"Успешно загружено {len(tarot_cards)} карт")
 # Хранилище данных пользователей
 user_data = {}
 user_day_counter = {}  # Счётчик дней для роадмапа
+
+# Файл для хранения статистики
+STATS_FILE = 'user_stats.json'
+
+# Инициализация файла статистики, если его нет
+if not Path(STATS_FILE).exists():
+    with open(STATS_FILE, 'w') as f:
+        json.dump({"all_users": {}, "last_active": {}}, f)
+
+def load_stats():
+    try:
+        with open(STATS_FILE, 'r') as f:
+            return json.load(f)
+    except Exception as e:
+        logger.error(f"Ошибка загрузки статистики: {e}")
+        return {"all_users": {}, "last_active": {}}
+
+def save_stats(stats):
+    try:
+        with open(STATS_FILE, 'w') as f:
+            json.dump(stats, f, indent=2)
+    except Exception as e:
+        logger.error(f"Ошибка сохранения статистики: {e}")
 
 # Тексты для роадмапа
 ROADMAP_MESSAGES = {
@@ -127,15 +151,23 @@ async def scheduled_morning_card():
 
 @dp.message_handler(commands=['start'])
 async def cmd_start(message: types.Message):
-    user_id = message.from_user.id
+    user_id = str(message.from_user.id)
     now = datetime.now() + timedelta(hours=3)  # MSK (UTC+3)
+    now_str = now.strftime("%Y-%m-%d %H:%M:%S")
+    
+    # Обновляем статистику
+    stats = load_stats()
+    if user_id not in stats["all_users"]:
+        stats["all_users"][user_id] = now_str
+    stats["last_active"][user_id] = now_str
+    save_stats(stats)
     
     # Инициализация данных
-    if user_id not in user_data:
-        user_data[user_id] = {'count': 0, 'last_request': None}
-        user_day_counter[user_id] = 0
+    if int(user_id) not in user_data:
+        user_data[int(user_id)] = {'count': 0, 'last_request': None}
+        user_day_counter[int(user_id)] = 0
     
-    data = user_data[user_id]
+    data = user_data[int(user_id)]
     
     # Проверка на новый день
     if data['last_request'] and (now - data['last_request']).days >= 1:
@@ -143,13 +175,13 @@ async def cmd_start(message: types.Message):
     
     # Логика выдачи карт
     if data['count'] == 0:
-        if await send_card(user_id):
+        if await send_card(int(user_id)):
             data['count'] += 1
             data['last_request'] = now
             # Сообщение после первой карты
             await message.answer(ROADMAP_MESSAGES[0], parse_mode="HTML")
     elif data['count'] == 1:
-        if await send_card(user_id):
+        if await send_card(int(user_id)):
             data['count'] += 1
     else:
         await message.reply(
@@ -157,6 +189,38 @@ async def cmd_start(message: types.Message):
             "А пока — загляните в мир Таро @Taro_Caesar у нас много чего ценного, красивого и интересного.✨",
             parse_mode="HTML"
         )
+
+@dp.message_handler(commands=['peop'])
+async def cmd_peop(message: types.Message):
+    ADMIN_ID = 227001984  # Ваш ID
+    
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("⛔ Команда только для администратора")
+        return
+    
+    stats = load_stats()
+    now = datetime.now() + timedelta(hours=3)  # MSK (UTC+3)
+    week_ago = now - timedelta(days=7)
+    
+    # Считаем активных за неделю
+    active_users = 0
+    for user_id, last_active_str in stats["last_active"].items():
+        try:
+            last_active = datetime.strptime(last_active_str, "%Y-%m-%d %H:%M:%S")
+            if last_active >= week_ago:
+                active_users += 1
+        except:
+            continue
+    
+    total_users = len(stats["all_users"])
+    
+    await message.answer(
+        f"📊 <b>Статистика бота</b>\n\n"
+        f"• Всего пользователей: <code>{total_users}</code>\n"
+        f"• Активных за неделю: <code>{active_users}</code>\n\n"
+        f"<i>Данные на {now.strftime('%d.%m.%Y %H:%M')} (MSK)</i>",
+        parse_mode="HTML"
+    )
 
 async def on_startup(dp):
     asyncio.create_task(scheduled_morning_card())
