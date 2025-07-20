@@ -161,6 +161,30 @@ async def cmd_start(message: types.Message):
 async def on_startup(dp):
     asyncio.create_task(scheduled_morning_card())
 
+# --- Скрытая статистика ---
+active_users = {}  # Словарь для хранения активности {user_id: дата}
+
+@dp.message_handler(commands=['stat'])
+async def cmd_stat(message: types.Message):
+    if message.from_user.id != 227001984:
+        return
+    
+    now = datetime.now().date()
+    active_count = sum((now - date).days <= 3 for date in active_users.values())
+    
+    await message.answer(
+        f"📊 Активных пользователей (3 дня): {active_count}\n"
+        f"📌 Всего уникальных: {len(active_users)}",
+        parse_mode="HTML"
+    )
+
+# Обновляем активность в /start
+@dp.message_handler(commands=['start'])
+async def cmd_start(message: types.Message):
+    user_id = message.from_user.id
+    active_users[user_id] = datetime.now().date()  # Записываем активность
+    # ... (остальной ваш код /start)
+
 if __name__ == '__main__':
     try:
         logger.info("Запуск бота...")
