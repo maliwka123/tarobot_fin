@@ -7,6 +7,10 @@ from datetime import datetime, time as dt_time, timedelta
 from aiogram import Bot, Dispatcher, types
 from aiogram.utils import executor
 from pathlib import Path
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import DaysTrigger
 
 # Настройка логов
 logging.basicConfig(level=logging.INFO)
@@ -16,6 +20,7 @@ logger = logging.getLogger(__name__)
 API_TOKEN = '7348274440:AAGtY3EC0NuA4Y8S5RP-oJLr2fWsG-QGhmM'
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
+scheduler = AsyncIOScheduler()
 
 # Загрузка карт
 with open('cards_data.json', 'r', encoding='utf-8') as f:
@@ -57,7 +62,7 @@ ROADMAP_MESSAGES = {
        "3. Обратите внимание на <b>совет</b> под картой — иногда ответ уже там",
 
     3: "💫 <b>Заметили, как карты отражают ваше состояние?</b>\n\n"
-       "В канале @Taro_Caesar разбираем, как работать с этими подсказками — "
+       "В канале @Taro_Caesar разбираем, как работать с этими подсказки — "
        "вот пример → https://t.me/taro_caesar/40",
 
     6: "🧠 <b>Нейропрограммирование через Таро</b>\n\n"
@@ -87,6 +92,25 @@ ROADMAP_MESSAGES = {
         "• Сообщество единомышленников\n\n"
         "Присоединяйтесь → @Taro_Caesar"
 }
+
+# Сообщение для магазина
+SHOP_MESSAGE = (
+    "🌟 <b>Чувствуете магию Таро и хотите глубже погрузиться в этот мир?</b>\n\n"
+    
+    "🃏 <b>Старшие Арканы для нейропрограммирования</b>\n"
+    "Каждая карта — это ключ к вашему внутреннему состоянию. "
+    "Старшие Арканы настраивают ваш внутренний мир через нейропрограммирование "
+    "и помогают трансформироваться в то состояние, которое вы выбираете для себя.\n\n"
+    
+    "🎴 <b>Волшебная колода в печатном издании</b>\n"
+    "Приобретите нашу полноценную колоду! Расклады с ней превращаются "
+    "в настоящие чувственные рассказы неповторимой красоты. "
+    "Карты поддерживают и направляют вас, делая каждый расклад "
+    "уникальной историей, которая говорит именно с вами.\n\n"
+    
+    "💫 Начните свое глубокое путешествие в мир Таро — "
+    "посетите наш магазин: https://tarocaesar.tilda.ws"
+)
 
 def get_random_card():
     return random.choice(tarot_cards)
@@ -129,6 +153,27 @@ async def send_roadmap_message(user_id: int, day: int):
             disable_web_page_preview=(day != 3)  # Превью только для дня 3
         )
 
+async def send_shop_message():
+    """Отправляет сообщение о магазине всем пользователям раз в 3 дня"""
+    for user_id in list(user_data.keys()):
+        try:
+            # Создаем клавиатуру с кнопкой
+            keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
+            button = KeyboardButton("🛍️ Наш магазин")
+            keyboard.add(button)
+            
+            await bot.send_message(
+                chat_id=user_id,
+                text=SHOP_MESSAGE,
+                parse_mode="HTML",
+                reply_markup=keyboard,
+                disable_web_page_preview=True
+            )
+            # Небольшая задержка между отправками чтобы не превысить лимиты Telegram
+            await asyncio.sleep(0.1)
+        except Exception as e:
+            logger.error(f"Не удалось отправить сообщение о магазине пользователю {user_id}: {e}")
+
 async def scheduled_morning_card():
     while True:
         try:
@@ -162,6 +207,12 @@ async def cmd_start(message: types.Message):
     stats["last_active"][user_id] = now_str
     save_stats(stats)
     
+    # Создаем клавиатуру с кнопками
+    keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
+    button_card = KeyboardButton("🎴 Получить карту")
+    button_shop = KeyboardButton("🛍️ Наш магазин")
+    keyboard.add(button_card, button_shop)
+    
     # Инициализация данных
     if int(user_id) not in user_data:
         user_data[int(user_id)] = {'count': 0, 'last_request': None}
@@ -178,17 +229,40 @@ async def cmd_start(message: types.Message):
         if await send_card(int(user_id)):
             data['count'] += 1
             data['last_request'] = now
-            # Сообщение после первой карты
-            await message.answer(ROADMAP_MESSAGES[0], parse_mode="HTML")
+            # Сообщение после первой карты с кнопками
+            await message.answer(ROADMAP_MESSAGES[0], parse_mode="HTML", reply_markup=keyboard)
     elif data['count'] == 1:
         if await send_card(int(user_id)):
             data['count'] += 1
+            # Показываем кнопки снова после второй карты
+            await message.answer("✨ Используйте кнопки ниже для взаимодействия с ботом", reply_markup=keyboard)
     else:
         await message.reply(
             "✨ Сегодня Таро дали все подсказки которые могли. "
             "А пока — загляните в мир Таро @Taro_Caesar у нас много чего ценного, красивого и интересного.✨",
-            parse_mode="HTML"
+            parse_mode="HTML",
+            reply_markup=keyboard
         )
+
+# Обработчик кнопки "🎴 Получить карту"
+@dp.message_handler(lambda message: message.text == "🎴 Получить карту")
+async def handle_card_button(message: types.Message):
+    await cmd_start(message)
+
+# Обработчик кнопки "🛍️ Наш магазин"
+@dp.message_handler(lambda message: message.text == "🛍️ Наш магазин")
+async def handle_shop_button(message: types.Message):
+    keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
+    button_card = KeyboardButton("🎴 Получить карту")
+    button_shop = KeyboardButton("🛍️ Наш магазин")
+    keyboard.add(button_card, button_shop)
+    
+    await message.answer(
+        SHOP_MESSAGE,
+        parse_mode="HTML",
+        reply_markup=keyboard,
+        disable_web_page_preview=True
+    )
 
 @dp.message_handler(commands=['peop'])
 async def cmd_peop(message: types.Message):
@@ -222,8 +296,20 @@ async def cmd_peop(message: types.Message):
         parse_mode="HTML"
     )
 
+def schedule_shop_messages():
+    """Настройка планировщика для сообщений о магазине"""
+    # Отправка сообщения о магазине каждые 3 дня
+    scheduler.add_job(
+        send_shop_message,
+        DaysTrigger(days=3),
+        id="shop_message",
+        replace_existing=True
+    )
+
 async def on_startup(dp):
     asyncio.create_task(scheduled_morning_card())
+    schedule_shop_messages()
+    scheduler.start()
 
 if __name__ == '__main__':
     try:
